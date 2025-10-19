@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLB Schedule Calendar</title>
+</head>
+<body>
+    <h1>MLB Game Schedule</h1>
+    
+    <label for="yearSelect">Select Year: </label>
+    <select id="yearSelect">
+        <option value="">-- Select Year --</option>
+    </select>
+    
+    <div id="calendar"></div>
+    
+    <div id="popup" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; border:2px solid black; padding:20px; max-width:80%; max-height:80%; overflow:auto; z-index:1000;">
+        <button id="closePopup" style="float:right;">Close</button>
+        <h2 id="popupDate"></h2>
+        <div id="popupContent"></div>
+    </div>
+    
+    <div id="overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999;"></div>
+
+    <script>
+        let scheduleData = {};
+        
+        // Populate year dropdown
+        const yearSelect = document.getElementById('yearSelect');
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear; year >= 2000; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        }
+        
+        // Year selection handler
+        yearSelect.addEventListener('change', async function() {
+            const year = this.value;
+            if (!year) return;
+            
+            await fetchSchedule(year);
+            displayCalendar(year);
+        });
+        
+        // Fetch MLB schedule
+        async function fetchSchedule(year) {
+            const url = `https://statsapi.mlb.com/api/v1/schedule/games/?sportId=1&startDate=${year}-01-01&endDate=${year}-12-31`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                scheduleData = {};
+                for (const day of data.dates) {
+                    const games = [];
+                    for (const game of day.games) {
+                        games.push({
+                            gameID: game.gamePk,
+                            awayTeam: game.teams.away.team.name,
+                            homeTeam: game.teams.home.team.name
+                        });
+                    }
+                    scheduleData[day.date] = games;
+                }
+            } catch (error) {
+                console.error('Error fetching schedule:', error);
+                alert('Error loading schedule data');
+            }
+        }
+        
+        // Display calendar like Unix cal command
+        function displayCalendar(year) {
+            const calendarDiv = document.getElementById('calendar');
+            calendarDiv.innerHTML = '<h2>' + year + '</h2>';
+            
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+            
+            for (let quarter = 0; quarter < 4; quarter++) {
+                const quarterDiv = document.createElement('div');
+                quarterDiv.style.display = 'inline-block';
+                quarterDiv.style.verticalAlign = 'top';
+                quarterDiv.style.marginBottom = '30px';
+                
+                const quarterTable = document.createElement('table');
+                const quarterRow = document.createElement('tr');
+                
+                for (let i = 0; i < 3; i++) {
+                    const month = quarter * 3 + i;
+                    const monthCell = document.createElement('td');
+                    monthCell.style.verticalAlign = 'top';
+                    monthCell.style.paddingRight = '30px';
+                    
+                    const monthDiv = document.createElement('div');
+                    
+                    const monthTitle = document.createElement('h3');
+                    monthTitle.textContent = monthNames[month] + ' ' + year;
+                    monthDiv.appendChild(monthTitle);
+                    
+                    const table = document.createElement('table');
+                    table.cellPadding = '5';
+                
+                // Header row with day names
+                const headerRow = document.createElement('tr');
+                const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+                for (const dayName of dayNames) {
+                    const th = document.createElement('th');
+                    th.textContent = dayName;
+                    headerRow.appendChild(th);
+                }
+                table.appendChild(headerRow);
+                
+                // Get first day of month and number of days
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                let day = 1;
+                for (let week = 0; week < 6; week++) {
+                    const row = document.createElement('tr');
+                    
+                    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+                        const cell = document.createElement('td');
+                        cell.style.width = '40px';
+                        cell.style.height = '40px';
+                        cell.style.textAlign = 'center';
+                        
+                        if ((week === 0 && dayOfWeek < firstDay) || day > daysInMonth) {
+                            cell.textContent = '';
+                        } else {
+                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            
+                            if (scheduleData[dateStr] && scheduleData[dateStr].length > 0) {
+                                const link = document.createElement('a');
+                                link.href = '#';
+                                link.textContent = day;
+                                link.style.fontWeight = 'bold';
+                                link.onclick = function(e) {
+                                    e.preventDefault();
+                                    showGames(dateStr);
+                                };
+                                cell.appendChild(link);
+                            } else {
+                                cell.textContent = day;
+                            }
+                            day++;
+                        }
+                        
+                        row.appendChild(cell);
+                    }
+                    
+                    table.appendChild(row);
+                    if (day > daysInMonth) break;
+                }
+                
+                    monthDiv.appendChild(table);
+                    monthCell.appendChild(monthDiv);
+                    quarterRow.appendChild(monthCell);
+                }
+                
+                quarterTable.appendChild(quarterRow);
+                quarterDiv.appendChild(quarterTable);
+                calendarDiv.appendChild(quarterDiv);
+            }
+        }
+        
+        // Show games popup
+        function showGames(date) {
+            const games = scheduleData[date];
+            if (!games) return;
+            
+            const popup = document.getElementById('popup');
+            const overlay = document.getElementById('overlay');
+            const popupDate = document.getElementById('popupDate');
+            const popupContent = document.getElementById('popupContent');
+            
+            popupDate.textContent = 'Games on ' + date;
+            
+            let html = '<ul>';
+            for (const game of games) {
+                html += '<li>';
+                html += 'Game ID: ' + game.gameID + '<br>';
+                html += game.awayTeam + ' at ' + game.homeTeam;
+                html += '</li>';
+            }
+            html += '</ul>';
+            
+            popupContent.innerHTML = html;
+            popup.style.display = 'block';
+            overlay.style.display = 'block';
+        }
+        
+        // Close popup handlers
+        document.getElementById('closePopup').addEventListener('click', function() {
+            document.getElementById('popup').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+        });
+        
+        document.getElementById('overlay').addEventListener('click', function() {
+            document.getElementById('popup').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+        });
+    </script>
+</body>
+</html>
